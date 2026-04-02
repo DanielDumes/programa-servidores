@@ -6,5 +6,5 @@
 
 export const BACKEND_URL = 'http://localhost:5000'
 
-// Intervalo de actualización automática en SEGUNDOS
-export const REFRESH_INTERVAL_SEC = 15
+// Intervalo de actualización automática (Sincronizado con el cronómetro real)
+export const REFRESH_INTERVAL_SEC = 45

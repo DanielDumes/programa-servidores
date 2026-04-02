@@ -145,27 +145,49 @@
     <!-- ══════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'history'" class="history-layout">
 
-      <!-- Sidebar: lista de días -->
+      <!-- Sidebar: Calendario Interactivo -->
       <aside class="day-sidebar">
-        <div class="sidebar-title">Días con Datos</div>
-        <div v-if="loadingHistory" class="center-loader" style="padding:24px 0">
-          <div class="spinner"></div>
-        </div>
-        <div v-else-if="historyDays.length === 0" class="empty-log" style="padding:20px 16px; font-size:12px">
-          Sin datos históricos aún.
-        </div>
-        <div
-          v-else
-          v-for="day in historyDays" :key="day.date"
-          class="day-item"
-          :class="{ active: selectedDate === day.date }"
-          @click="loadDay(day.date)"
-        >
-          <div class="day-date">{{ formatDate(day.date) }}</div>
-          <div class="day-meta">
-            <span class="day-chip">{{ day.server_count }} srvs</span>
-            <span class="day-chip day-chip--ev" v-if="day.events > 0">{{ day.events }} eventos</span>
+        <div class="calendar-header">
+          <button class="cal-nav" @click="changeMonth(-1)">‹</button>
+          <div class="cal-title" @click="resetToToday" title="Ir a hoy">
+            {{ monthNames[currentMonth] }} {{ currentYear }}
           </div>
+          <button class="cal-nav" @click="changeMonth(1)">›</button>
+        </div>
+
+        <div class="calendar-grid">
+          <!-- Días de la semana (Domingo primero) -->
+          <div class="cal-weekday" v-for="wd in weekDays" :key="wd">{{ wd }}</div>
+          
+          <!-- Días del mes con relleno -->
+          <div
+            v-for="(day, idx) in calendarGrid"
+            :key="idx"
+            class="cal-day"
+            :class="{
+              'off': !day.isCurrentMonth,
+              'has-data': day.hasData,
+              'has-events': day.hasEvents,
+              'active': selectedDate === day.dateString,
+              'today': isToday(day.dateString)
+            }"
+            @click="day.hasData && loadDay(day.dateString)"
+          >
+            <span class="cal-num">{{ day.dayNum }}</span>
+            <div class="cal-dots" v-if="day.hasData">
+              <span class="dot-data"></span>
+              <span class="dot-event" v-if="day.hasEvents"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="calendar-legend">
+          <div class="leg-item"><span class="dot-data"></span> Datos</div>
+          <div class="leg-item"><span class="dot-event"></span> Eventos</div>
+        </div>
+
+        <div class="history-search-wrap">
+           <input type="text" v-model="historySearch" placeholder="Buscar en el día..." class="mini-search">
         </div>
       </aside>
 
@@ -494,6 +516,92 @@ const hourlyData     = ref(null)
 
 const historySearch  = ref('')
 const inspectSnap    = ref(null)
+
+// Calendario
+const currentMonth = ref(new Date().getMonth())
+const currentYear  = ref(new Date().getFullYear())
+const monthNames   = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const weekDays     = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+
+// Grid del calendario (Semana empieza en Domingo)
+const calendarGrid = computed(() => {
+  const year = currentYear.value
+  const month = currentMonth.value
+  
+  // Primer día del mes
+  const firstDay = new Date(year, month, 1)
+  // El día de la semana (0=Dom, 1=Lun, ...)
+  const startDay = firstDay.getDay()
+  // Último día del mes
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  // Último día del mes anterior
+  const prevLastDay = new Date(year, month, 0).getDate()
+  
+  const grid = []
+  
+  // Mapa de datos por fecha para acceso rápido ISO -> DayInfo
+  const dataMap = historyDays.value.reduce((acc, d) => {
+    acc[d.date] = d
+    return acc
+  }, {})
+
+  // Relleno mes anterior
+  for (let i = startDay; i > 0; i--) {
+    grid.push({
+      dayNum: prevLastDay - i + 1,
+      isCurrentMonth: false,
+      dateString: null
+    })
+  }
+  
+  // Días mes actual
+  for (let d = 1; d <= lastDay; d++) {
+    const ds = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`
+    const info = dataMap[ds]
+    grid.push({
+      dayNum: d,
+      isCurrentMonth: true,
+      dateString: ds,
+      hasData: !!info,
+      hasEvents: info ? info.events > 0 : false
+    })
+  }
+  
+  // Relleno mes siguiente hasta completar 42 celdas (6 semanas)
+  const remaining = 42 - grid.length
+  for (let i = 1; i <= remaining; i++) {
+    grid.push({
+      dayNum: i,
+      isCurrentMonth: false,
+      dateString: null
+    })
+  }
+  
+  return grid
+})
+
+function changeMonth(delta) {
+  currentMonth.value += delta
+  if (currentMonth.value > 11) {
+    currentMonth.value = 0
+    currentYear.value++
+  } else if (currentMonth.value < 0) {
+    currentMonth.value = 11
+    currentYear.value--
+  }
+}
+
+function resetToToday() {
+  currentMonth.value = new Date().getMonth()
+  currentYear.value = new Date().getFullYear()
+}
+
+function isToday(ds) {
+  if (!ds) return false
+  const now = new Date()
+  const today = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`
+  return ds === today
+}
 
 const filteredSnapshots = computed(() => {
   if (!dayData.value?.snapshots) return []
@@ -870,23 +978,44 @@ onMounted(async () => {
 /* ── History Layout ── */
 .history-layout { display:flex; flex:1; min-height:0; height:calc(100vh - 64px); }
 
-/* Sidebar */
+/* Sidebar Calendario */
 .day-sidebar {
-  width: 220px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border);
-  overflow-y:auto; display:flex; flex-direction:column;
+  width: 280px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border);
+  overflow-y:auto; display:flex; flex-direction:column; padding: 20px 16px; gap: 20px;
 }
-.sidebar-title { padding:16px; font-size:11px; font-weight:700; color: var(--text-3); text-transform:uppercase; letter-spacing:.1em; border-bottom:1px solid var(--border); flex-shrink:0; }
-.day-item {
-  padding:12px 16px; cursor:pointer; border-bottom:1px solid rgba(0,0,0,0.03);
-  transition: background .15s;
+.calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-nav { background: rgba(0,0,0,0.04); border: 1px solid var(--border); border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-2); font-size: 16px; font-weight: bold; }
+.cal-nav:hover { background: rgba(0,0,0,0.08); color: var(--text); }
+.cal-title { font-size: 14px; font-weight: 700; color: var(--text); cursor: pointer; user-select: none; }
+.cal-title:hover { color: var(--blue-400); }
+
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-weekday { font-size: 10px; font-weight: 800; color: var(--text-4); text-align: center; padding-bottom: 8px; }
+.cal-day {
+  aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text-2);
+  cursor: default; position: relative; transition: all .15s;
 }
-.day-item:hover { background: rgba(0,0,0,0.04); }
-.day-item.active { background: rgba(62,146,239,0.1); border-left: 2px solid var(--blue-400); }
-.day-date { font-size:13px; font-weight:600; color: var(--text); }
-.day-item.active .day-date { color: var(--blue-400); }
-.day-meta { display:flex; gap:6px; margin-top:5px; flex-wrap:wrap; }
-.day-chip { font-size:10px; background:rgba(0,0,0,0.04); color: var(--text-3); padding:2px 7px; border-radius:999px; border:1px solid var(--border-light); }
-.day-chip--ev { background:rgba(245,166,35,0.1); color: var(--amber-600); border-color:rgba(245,166,35,0.3); }
+.cal-day.has-data { cursor: pointer; color: var(--text); }
+.cal-day.has-data:hover { background: rgba(62,146,239,0.08); transform: scale(1.05); }
+.cal-day.off { color: var(--text-4) !important; opacity: 0.3; }
+.cal-day.active { background: var(--blue-400) !important; color: white !important; box-shadow: 0 4px 12px rgba(62,146,239,0.3); }
+.cal-day.today { text-decoration: underline; text-underline-offset: 3px; font-weight: 900; }
+
+.cal-dots { position: absolute; bottom: 4px; display: flex; gap: 2px; }
+.dot-data { width: 4px; height: 4px; border-radius: 50%; background: var(--blue-400); }
+.dot-event { width: 4px; height: 4px; border-radius: 50%; background: var(--amber-600); }
+.active .dot-data, .active .dot-event { background: white; }
+
+.calendar-legend { display: flex; gap: 12px; font-size: 10px; font-weight: 600; color: var(--text-4); margin-top: 10px; }
+.leg-item { display: flex; align-items: center; gap: 4px; }
+
+.history-search-wrap { margin-top: auto; }
+.mini-search {
+  width: 100%; background: rgba(0,0,0,0.03); border: 1px solid var(--border);
+  padding: 8px 12px; border-radius: 8px; font-size: 12px; outline: none; transition: border-color .2s;
+}
+.mini-search:focus { border-color: var(--blue-400); }
 
 /* Day Main */
 .day-main { flex:1; overflow-y:auto; padding:28px 32px; display:flex; flex-direction:column; }
