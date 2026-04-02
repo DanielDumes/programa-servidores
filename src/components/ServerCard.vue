@@ -46,8 +46,8 @@
         <span class="ml">Power</span>
       </div>
       <div class="met">
-        <span class="mv" :class="tempCls">{{ maxTemp !== null ? maxTemp + '°' : '—' }}</span>
-        <span class="ml">Temp máx</span>
+        <span class="mv" :class="tempCls">{{ displayTemp !== null ? displayTemp + '°' : '—' }}</span>
+        <span class="ml">Temp Amb</span>
       </div>
       <div class="met">
         <span class="mv mv--blue">
@@ -112,7 +112,7 @@
     </div>
     <div class="sl-metrics" v-if="data && !error">
       <div class="sl-met"><span class="slm-v" :class="data.summary?.power_state === 'On' ? 'mv--ok' : 'mv--muted'">{{ data.summary?.power_state ?? '—' }}</span><span class="slm-l">Power</span></div>
-      <div class="sl-met"><span class="slm-v" :class="tempCls">{{ maxTemp !== null ? maxTemp + ' °C' : '—' }}</span><span class="slm-l">Temp</span></div>
+      <div class="sl-met"><span class="slm-v" :class="tempCls">{{ displayTemp !== null ? displayTemp + '°C' : '—' }}</span><span class="slm-l">Ambiente</span></div>
       <div class="sl-met"><span class="slm-v mv--blue">{{ data.power?.consumed_watts ? data.power.consumed_watts + ' W' : '—' }}</span><span class="slm-l">Watts</span></div>
       <div class="sl-met"><span class="slm-v">{{ data.summary?.memory_gib ? data.summary.memory_gib + ' GB' : '—' }}</span><span class="slm-l">RAM</span></div>
       <div class="sl-met"><span class="slm-v">{{ data.summary?.cpu_count ?? '—' }}</span><span class="slm-l">CPUs</span></div>
@@ -157,8 +157,20 @@ const deleting      = ref(false)
 let timer = null
 
 // ── Computed ─────────────────────────────────────────────────────
-const maxTemp = computed(() => {
-  const vals = (data.value?.temperatures ?? []).map(t => t.reading_c).filter(v => v != null)
+const displayTemp = computed(() => {
+  const sensors = data.value?.temperatures ?? []
+  if (!sensors.length) return null
+  
+  // Priorizar el sensor "Inlet Ambient" (primer sensor en iLO 5 usualmente)
+  const ambient = sensors.find(s => {
+    const n = (s.name || "").toLowerCase()
+    return n.includes("inlet") || n.includes("ambient")
+  })
+  
+  if (ambient && ambient.reading_c != null) return ambient.reading_c
+  
+  // Fallback: Max temp de todos los sensores
+  const vals = sensors.map(t => t.reading_c).filter(v => v != null)
   return vals.length ? Math.max(...vals) : null
 })
 
@@ -201,9 +213,9 @@ const listCls = computed(() => ({
 }))
 
 const tempCls = computed(() => {
-  if (maxTemp.value === null) return ''
-  if (maxTemp.value > 80) return 'mv--crit'
-  if (maxTemp.value > 65) return 'mv--warn'
+  if (displayTemp.value === null) return ''
+  if (displayTemp.value > 80) return 'mv--crit'
+  if (displayTemp.value > 65) return 'mv--warn'
   return ''
 })
 

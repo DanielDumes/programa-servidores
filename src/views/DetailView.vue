@@ -71,14 +71,14 @@
           </div>
         </div>
 
-        <div class="hero-card" :class="'hc--' + maxTempCls">
+        <div class="hero-card" :class="'hc--' + ambientTempCls">
           <div class="hc-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
           </div>
           <div class="hc-body">
-            <div class="hc-lbl">Temperatura Pico</div>
-            <div class="hc-val">{{ maxTemp !== null ? maxTemp + ' °C' : '—' }}</div>
-            <div class="hc-sub">{{ maxTempSensor }}</div>
+            <div class="hc-lbl">Temperatura Ambiente</div>
+            <div class="hc-val">{{ ambientTemp !== null ? ambientTemp + ' °C' : '—' }}</div>
+            <div class="hc-sub">{{ ambientTempName }}</div>
           </div>
         </div>
       </div>
@@ -238,17 +238,18 @@
             </div>
             <div>
               <div class="ph-title">MAPA TÉRMICO</div>
-              <div class="ph-sub">{{ data.temperatures?.length ?? 0 }} SENSORES ACTIVOS</div>
+              <div class="ph-sub">{{ groupedTemperatures.length }} RESÚMENES DE SENSORES</div>
             </div>
           </div>
           <div class="panel-body">
             <div class="temp-grid">
-              <div class="temp-card" v-for="t in data.temperatures" :key="t.name" :class="'tc--' + tempClsStr(t)">
-                <div class="temp-val">{{ t.reading_c !== null ? t.reading_c + '°' : 'N/A' }}</div>
-                <div class="temp-name">{{ t.name }}</div>
-                <div class="temp-thresholds" v-if="t.upper_caution || t.upper_critical">
-                  <span v-if="t.upper_caution">C:{{ t.upper_caution }}°</span>
-                  <span v-if="t.upper_critical">K:{{ t.upper_critical }}°</span>
+              <div class="temp-card" v-for="g in groupedTemperatures" :key="g.name" :class="'tc--' + g.status">
+                <div class="temp-val">{{ g.reading !== null ? Math.round(g.reading) + '°' : 'N/A' }}</div>
+                <div class="temp-name">{{ g.name }}</div>
+                <div class="temp-tag" v-if="g.isGroup">Promedio</div>
+                <div class="temp-thresholds" v-if="!g.isGroup && (g.caution || g.critical)">
+                  <span v-if="g.caution">C:{{ g.caution }}°</span>
+                  <span v-if="g.critical">K:{{ g.critical }}°</span>
                 </div>
               </div>
             </div>
@@ -375,22 +376,109 @@ const lastUpdate = ref('')
 let autoTimer    = null
 
 // ── Computed ───────────────────────────────────────────────
-const maxTempSensor = computed(() => {
-  if (!data.value?.temperatures?.length) return ''
-  const s = data.value.temperatures.reduce((a, b) => (b.reading_c ?? -999) > (a.reading_c ?? -999) ? b : a)
-  return s?.name ?? ''
+const ambientTempSensor = computed(() => {
+  const sensors = data.value?.temperatures ?? []
+  if (!sensors.length) return null
+  
+  // Buscar sensor Inlet Ambient
+  const found = sensors.find(s => {
+    const n = (s.name || "").toLowerCase()
+    return n.includes("inlet") || n.includes("ambient")
+  })
+  return found || null
 })
 
-const maxTemp = computed(() => {
+const ambientTemp = computed(() => {
+  if (ambientTempSensor.value && ambientTempSensor.value.reading_c != null) {
+    return ambientTempSensor.value.reading_c
+  }
+  // Fallback: Max temp
   const vals = (data.value?.temperatures ?? []).map(t => t.reading_c).filter(v => v != null)
   return vals.length ? Math.max(...vals) : null
 })
 
-const maxTempCls = computed(() => {
-  if (maxTemp.value === null) return ''
-  if (maxTemp.value > 80) return 'crit'
-  if (maxTemp.value > 65) return 'warn'
+const ambientTempName = computed(() => {
+  if (ambientTempSensor.value) return ambientTempSensor.value.name
+  
+  // Fallback: Nombre del sensor con temp máxima
+  if (!data.value?.temperatures?.length) return 'Sin sensores'
+  const s = data.value.temperatures.reduce((a, b) => (b.reading_c ?? -999) > (a.reading_c ?? -999) ? b : a)
+  return s?.name ?? 'Sensor de reserva'
+})
+
+const ambientTempCls = computed(() => {
+  if (ambientTemp.value === null) return ''
+  if (ambientTemp.value > 80) return 'crit'
+  if (ambientTemp.value > 65) return 'warn'
   return 'ok'
+})
+
+const groupedTemperatures = computed(() => {
+  const sensors = data.value?.temperatures ?? []
+  if (!sensors.length) return []
+
+  const groups = {
+    cpu_vrm: { name: 'Reguladores CPU (VRM)', sensors: [], isGroup: true },
+    mem_vrm: { name: 'Reguladores RAM (VRM)', sensors: [], isGroup: true },
+    storage: { name: 'Área Almacenamiento', sensors: [], isGroup: true },
+    others:  []
+  }
+
+  sensors.forEach(s => {
+    const name = (s.name || "").toLowerCase()
+    
+    // Clasificar inteligentemente
+    if ((name.includes('vr') || name.includes('voltage')) && (name.includes('p1') || name.includes('p2') || name.includes('cpu')) && !name.includes('mem')) {
+      groups.cpu_vrm.sensors.push(s)
+    } 
+    else if ((name.includes('vr') || name.includes('dimm')) && (name.includes('mem') || name.includes('ram'))) {
+      groups.mem_vrm.sensors.push(s)
+    }
+    else if (name.includes('hpp') || name.includes('drive') || name.includes('disk') || name.includes('storage')) {
+      groups.storage.sensors.push(s)
+    }
+    else {
+      groups.others.push({
+        name: s.name,
+        reading: s.reading_c,
+        status: tempClsStr(s),
+        isGroup: false,
+        caution: s.upper_caution,
+        critical: s.upper_critical
+      })
+    }
+  })
+
+  const finalizeGroup = (g) => {
+    if (!g.sensors.length) return null
+    const valid = g.sensors.filter(s => s.reading_c != null)
+    if (!valid.length) return null
+    
+    const avg = valid.reduce((a, b) => a + b.reading_c, 0) / valid.length
+    // El estatus del grupo es el del sensor más alto por seguridad
+    const worstStatus = valid.map(s => tempClsStr(s)).reduce((a, b) => {
+      if (a === 'crit' || b === 'crit') return 'crit'
+      if (a === 'warn' || b === 'warn') return 'warn'
+      return 'ok'
+    }, 'ok')
+
+    return {
+      name: g.name,
+      reading: avg,
+      status: worstStatus,
+      isGroup: true,
+      count: valid.length
+    }
+  }
+
+  const result = [
+    finalizeGroup(groups.cpu_vrm),
+    finalizeGroup(groups.mem_vrm),
+    finalizeGroup(groups.storage),
+    ...groups.others
+  ].filter(x => x !== null)
+
+  return result
 })
 
 const cpuTempSensors = computed(() => {
@@ -670,6 +758,7 @@ onUnmounted(() => { clearInterval(autoTimer) })
 .tc--warn .temp-val { color: #d97706; }
 .tc--crit .temp-val { color: #e11d48; }
 .temp-name { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.temp-tag { display: inline-block; margin-top: 6px; font-size: 8px; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.05); color: #64748b; letter-spacing: 0.05em; }
 .temp-thresholds { font-size: 8px; color: #94a3b8; margin-top: 4px; display: flex; gap: 6px; font-family: 'JetBrains Mono', monospace; }
 
 /* ── FAN GRID ── */
