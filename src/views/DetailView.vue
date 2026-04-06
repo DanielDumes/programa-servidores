@@ -237,19 +237,23 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
             </div>
             <div>
-              <div class="ph-title">MAPA TÉRMICO</div>
-              <div class="ph-sub">{{ groupedTemperatures.length }} RESÚMENES DE SENSORES</div>
+              <div class="ph-title">MAPA TÉRMICO — ZONAS DE FLUJO</div>
+              <div class="ph-sub">{{ groupedTemperatures.length }} ZONAS · {{ (data.temperatures ?? []).length }} SENSORES</div>
             </div>
           </div>
           <div class="panel-body">
             <div class="temp-grid">
-              <div class="temp-card" v-for="g in groupedTemperatures" :key="g.name" :class="'tc--' + g.status">
+              <div class="temp-card" v-for="g in groupedTemperatures" :key="g.name + g.count" :class="'tc--' + g.status">
                 <div class="temp-val">{{ g.reading !== null ? Math.round(g.reading) + '°' : 'N/A' }}</div>
                 <div class="temp-name">{{ g.name }}</div>
-                <div class="temp-tag" v-if="g.isGroup">Promedio</div>
+                <!-- Grupo: badge con número de sensores -->
+                <div class="temp-tag temp-tag--group" v-if="g.isGroup">
+                  <span class="tg-icon">⌀</span> {{ g.count }} sensores
+                </div>
+                <!-- Sensor único: mostrar umbrales -->
                 <div class="temp-thresholds" v-if="!g.isGroup && (g.caution || g.critical)">
-                  <span v-if="g.caution">C:{{ g.caution }}°</span>
-                  <span v-if="g.critical">K:{{ g.critical }}°</span>
+                  <span v-if="g.caution" title="Precaución">C:{{ g.caution }}°</span>
+                  <span v-if="g.critical" title="Crítico">K:{{ g.critical }}°</span>
                 </div>
               </div>
             </div>
@@ -289,26 +293,32 @@
       <!-- ─── ROW 4: STORAGE + SYSTEM INFO ─── -->
       <div class="double-grid">
         <!-- Storage -->
-        <div class="panel" v-if="data.storage?.controllers?.length">
+        <div class="panel" v-if="data.storage?.controllers?.some(c => c.drives?.length)">
           <div class="panel-head">
             <div class="ph-icon ph-slate">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
             </div>
             <div>
               <div class="ph-title">ALMACENAMIENTO</div>
-              <div class="ph-sub">{{ data.storage?.controllers?.[0]?.name }}</div>
+              <div class="ph-sub">INVENTARIO DE DISCOS FÍSICOS</div>
             </div>
           </div>
-          <div class="panel-body">
-            <div class="drive-list">
-              <div class="drive-row" v-for="d in data.storage?.controllers?.[0]?.drives" :key="d.name">
-                <div class="drive-type-badge" :class="d.type === 'SSD' ? 'dtb--ssd' : 'dtb--hdd'">{{ d.type || 'HDD' }}</div>
-                <div class="drive-info">
-                  <div class="drive-name mono">{{ d.name }}</div>
-                  <div class="drive-model">{{ d.model }}</div>
+          <div class="panel-body" style="gap: 24px;">
+            <div v-for="(ctrl, idx) in data.storage.controllers.filter(c => c.drives?.length)" :key="idx" class="ctrl-group">
+              <div class="ctrl-tag">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg>
+                {{ ctrl.name }}
+              </div>
+              <div class="drive-list" style="margin-top: 8px;">
+                <div class="drive-row" v-for="d in ctrl.drives" :key="d.name">
+                  <div class="drive-type-badge" :class="d.type?.includes('SSD') ? 'dtb--ssd' : 'dtb--hdd'">{{ d.type || 'HDD' }}</div>
+                  <div class="drive-info">
+                    <div class="drive-name mono">{{ d.name }}</div>
+                    <div class="drive-model">{{ d.model }}</div>
+                  </div>
+                  <div class="drive-cap">{{ d.capacity_gb }} GB</div>
+                  <div class="drive-health" :class="d.health === 'OK' ? 's--ok' : 's--warn'">{{ d.health }}</div>
                 </div>
-                <div class="drive-cap">{{ d.capacity_gb }} GB</div>
-                <div class="drive-health" :class="d.health === 'OK' ? 's--ok' : 's--warn'">{{ d.health }}</div>
               </div>
             </div>
           </div>
@@ -417,66 +427,82 @@ const groupedTemperatures = computed(() => {
   const sensors = data.value?.temperatures ?? []
   if (!sensors.length) return []
 
-  const groups = {
-    cpu_vrm: { name: 'Reguladores CPU (VRM)', sensors: [], isGroup: true },
-    mem_vrm: { name: 'Reguladores RAM (VRM)', sensors: [], isGroup: true },
-    storage: { name: 'Área Almacenamiento', sensors: [], isGroup: true },
-    others:  []
+  // ── Normaliza el nombre eliminando:
+  //    · Prefijo numérico "01 ", "02-", "03. " etc.
+  //    · Sufijo indexador " 1", " 2", " 1A", "-AB", " ABCD", " EF"
+  function getBaseName(name) {
+    if (!name) return ''
+    let n = name
+    // Prefijo: "01 " / "01-" / "01. "
+    n = n.replace(/^\d+[\s\-\.]+/, '')
+    // Sufijo de letras mayúsculas solas al final: " ABCD", " EF", " AB"
+    n = n.replace(/\s+[A-Z]{1,4}$/, '')
+    // Sufijo numérico al final: " 1", " 2", " 1A", "-6"
+    n = n.replace(/[\s\-]+\d+[A-Za-z]?$/, '')
+    return n.trim()
   }
 
+  // ── Clave de zona: SOLO el nombre base normalizado
+  //    (NO usamos umbrales: sensores del mismo tipo pueden tener umbrales
+  //    distintos en iLO y aun así deben agruparse)
+  function zoneKey(s) {
+    return getBaseName(s.name).toLowerCase()
+  }
+
+  // ── Agrupar sensores por zona
+  const zoneMap = new Map()
   sensors.forEach(s => {
-    const name = (s.name || "").toLowerCase()
-    
-    // Clasificar inteligentemente
-    if ((name.includes('vr') || name.includes('voltage')) && (name.includes('p1') || name.includes('p2') || name.includes('cpu')) && !name.includes('mem')) {
-      groups.cpu_vrm.sensors.push(s)
-    } 
-    else if ((name.includes('vr') || name.includes('dimm')) && (name.includes('mem') || name.includes('ram'))) {
-      groups.mem_vrm.sensors.push(s)
-    }
-    else if (name.includes('hpp') || name.includes('drive') || name.includes('disk') || name.includes('storage')) {
-      groups.storage.sensors.push(s)
-    }
-    else {
-      groups.others.push({
-        name: s.name,
-        reading: s.reading_c,
-        status: tempClsStr(s),
-        isGroup: false,
-        caution: s.upper_caution,
-        critical: s.upper_critical
+    const key = zoneKey(s)
+    if (!zoneMap.has(key)) {
+      zoneMap.set(key, {
+        baseName: getBaseName(s.name),
+        sensors:  []
       })
     }
+    zoneMap.get(key).sensors.push(s)
   })
 
-  const finalizeGroup = (g) => {
-    if (!g.sensors.length) return null
-    const valid = g.sensors.filter(s => s.reading_c != null)
-    if (!valid.length) return null
-    
-    const avg = valid.reduce((a, b) => a + b.reading_c, 0) / valid.length
-    // El estatus del grupo es el del sensor más alto por seguridad
+  const result = []
+  zoneMap.forEach(zone => {
+    const valid = zone.sensors.filter(s => s.reading_c != null)
+    if (!valid.length) return
+
+    const isGroup = valid.length > 1
+    const avg     = valid.reduce((a, b) => a + b.reading_c, 0) / valid.length
+
+    // Estado más crítico del grupo (usa umbrales individuales de cada sensor)
     const worstStatus = valid.map(s => tempClsStr(s)).reduce((a, b) => {
       if (a === 'crit' || b === 'crit') return 'crit'
       if (a === 'warn' || b === 'warn') return 'warn'
       return 'ok'
     }, 'ok')
 
-    return {
-      name: g.name,
-      reading: avg,
-      status: worstStatus,
-      isGroup: true,
-      count: valid.length
-    }
-  }
+    // Para mostrar umbrales en sensor único, tomar los del primero del grupo
+    const ref = valid[0]
 
-  const result = [
-    finalizeGroup(groups.cpu_vrm),
-    finalizeGroup(groups.mem_vrm),
-    finalizeGroup(groups.storage),
-    ...groups.others
-  ].filter(x => x !== null)
+    result.push({
+      name:     isGroup ? zone.baseName : ref.name,
+      reading:  isGroup ? avg : ref.reading_c,
+      status:   worstStatus,
+      isGroup,
+      count:    valid.length,
+      caution:  ref.upper_caution,
+      critical: ref.upper_critical
+    })
+  })
+
+  // ── Ordenar: Ambient/Inlet → CPU → resto alfabético
+  result.sort((a, b) => {
+    const an = a.name.toLowerCase()
+    const bn = b.name.toLowerCase()
+    const isAmb = n => n.includes('inlet') || n.includes('ambient')
+    const isCpu = n => n.includes('cpu')
+    if (isAmb(an) && !isAmb(bn)) return -1
+    if (!isAmb(an) && isAmb(bn)) return  1
+    if (isCpu(an) && !isCpu(bn)) return -1
+    if (!isCpu(an) && isCpu(bn)) return  1
+    return an.localeCompare(bn)
+  })
 
   return result
 })
@@ -758,8 +784,12 @@ onUnmounted(() => { clearInterval(autoTimer) })
 .tc--warn .temp-val { color: #d97706; }
 .tc--crit .temp-val { color: #e11d48; }
 .temp-name { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.temp-tag { display: inline-block; margin-top: 6px; font-size: 8px; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.05); color: #64748b; letter-spacing: 0.05em; }
+.temp-tag { display: inline-flex; align-items: center; gap: 3px; margin-top: 6px; font-size: 8px; font-weight: 800; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: rgba(0,0,0,0.05); color: #64748b; letter-spacing: 0.04em; }
 .temp-thresholds { font-size: 8px; color: #94a3b8; margin-top: 4px; display: flex; gap: 6px; font-family: 'JetBrains Mono', monospace; }
+.temp-tag--group { background: rgba(59,130,246,0.1); color: #2563eb; border: 1px solid rgba(59,130,246,0.18); }
+.tc--warn .temp-tag--group { background: rgba(245,158,11,0.1); color: #d97706; border-color: rgba(245,158,11,0.2); }
+.tc--crit .temp-tag--group { background: rgba(244,63,94,0.1);  color: #e11d48; border-color: rgba(244,63,94,0.2); }
+.tg-icon { font-style: normal; font-size: 10px; line-height: 1; }
 
 /* ── FAN GRID ── */
 .fan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -795,6 +825,14 @@ onUnmounted(() => { clearInterval(autoTimer) })
 .it-row:last-child { border-bottom: none; }
 .it-lbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
 .it-val { font-size: 12px; font-weight: 700; color: #334155; text-align: right; }
+
+.ctrl-tag {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 800; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 4px 0; border-bottom: 1px dashed #e2e8f0;
+}
+.ctrl-tag svg { color: #94a3b8; }
 
 /* ── ANIMATIONS ── */
 @keyframes spin  { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
