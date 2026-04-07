@@ -1,6 +1,6 @@
 <template>
   <TransitionGroup name="toast-list" tag="div" class="toast-container">
-    <div v-for="t in toasts" :key="t.id" :class="['toast-item', t.severity.toLowerCase()]">
+    <div v-for="t in toasts" :key="t.id" :class="['toast-item', (t.severity || 'info').toLowerCase()]">
       <div class="toast-icon">
         <span v-if="t.severity === 'Critical'">🔴</span>
         <span v-else-if="t.severity === 'Warning'">🟠</span>

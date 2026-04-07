@@ -1,7 +1,7 @@
 <template>
   <div class="fleet-page">
 
-    <!-- ── Topbar ─────────────────────────────────────────── -->
+    <!-- ── Topbar ── -->
     <header class="topbar">
       <div class="topbar-brand">
         <div class="brand-icon">
@@ -20,31 +20,40 @@
 
       <div class="topbar-right">
         <div class="live-pill">
-          <span class="live-dot"></span>
-          LIVE
+          <span class="live-dot"></span>LIVE
         </div>
-        <div class="countdown-pill" v-if="countdownSec > 0">
-          <div class="cd-ring-wrap">
-            <svg viewBox="0 0 28 28" class="cd-ring">
-              <circle cx="14" cy="14" r="11" class="cd-bg"/>
-              <circle cx="14" cy="14" r="11" class="cd-fill" :stroke-dasharray="`${countdownPct * 69.1 / 100}, 69.1`" transform="rotate(-90 14 14)"/>
-            </svg>
-          </div>
-          <span>Refresco en {{ countdownMin }}</span>
-        </div>
-        <span class="last-refresh" v-if="lastRefresh">sync {{ lastRefresh }}</span>
 
-        <button class="btn" @click="$emit('open-reports')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        <div class="countdown-pill" v-if="countdownSec > 0">
+          <svg viewBox="0 0 28 28" width="18" height="18">
+            <circle cx="14" cy="14" r="11" fill="none" stroke="#ddd8d0" stroke-width="2.5"/>
+            <circle cx="14" cy="14" r="11" fill="none" stroke="#1a8a7a" stroke-width="2.5"
+              stroke-linecap="round"
+              :stroke-dasharray="`${countdownPct * 69.1 / 100} 69.1`"
+              transform="rotate(-90 14 14)"/>
+          </svg>
+          <span>{{ countdownSec }}s</span>
+        </div>
+
+        <span class="last-refresh" v-if="lastRefresh">↺ {{ lastRefresh }}</span>
+
+        <button class="btn-icon" @click="$emit('open-reports')" title="Reportes">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
             <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
           Reportes
         </button>
-        <button class="btn" @click="reloadAll" :disabled="loading">
-          <span :class="{ spin: loading }">↻</span> Actualizar
+
+        <button class="btn-icon" @click="reloadAll" :disabled="loading">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :class="{ spin: loading }">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-.09-3.7"/>
+          </svg>
+          Actualizar
         </button>
-        <button class="btn btn--primary" @click="showAdd = true">
+
+        <button class="btn-primary" @click="showAdd = true">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
@@ -53,94 +62,89 @@
       </div>
     </header>
 
-    <!-- ── Hero Section ───────────────────────────────────── -->
-    <section class="hero-section" v-if="servers.length > 0">
+    <!-- ── Alert banners ── -->
+    <div class="alert-crit" v-if="stats.crit > 0">
+      <span class="alert-led"></span>
+      <span>{{ stats.crit }} servidor{{ stats.crit > 1 ? 'es' : '' }} en estado <strong>Crítico</strong> — Requiere atención inmediata</span>
+    </div>
+    <div class="alert-warn" v-else-if="stats.warn > 0">
+      <span class="alert-led alert-led--warn"></span>
+      <span>{{ stats.warn }} servidor{{ stats.warn > 1 ? 'es' : '' }} con <strong>Advertencias</strong> activas</span>
+    </div>
 
-      <!-- Status banner if anything is wrong -->
-      <div class="alert-banner" v-if="stats.crit > 0">
-        <span class="ab-dot"></span>
-        <span>{{ stats.crit }} servidor(es) en estado <strong>Crítico</strong> — Requiere atención inmediata</span>
-      </div>
-      <div class="warn-banner" v-else-if="stats.warn > 0">
-        <span class="wb-dot"></span>
-        <span>{{ stats.warn }} servidor(es) con <strong>Advertencias</strong> activas</span>
-      </div>
-
-      <!-- Executive Status Ticker -->
-      <div class="kpi-ticker">
-        <!-- Compact Status Ring -->
-        <div class="kpi-ring-container">
-          <Doughnut :data="chartData" :options="chartOptions" />
-          <div class="kpi-ring-inner">
-             <span class="kr-dot" :class="overallCls"></span>
-          </div>
-        </div>
-
-        <div class="ticker-items">
-          <div class="ticker-item ks--blue">
-            <div class="ti-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><rect x="4" y="4" width="16" height="16" rx="2"/></svg></div>
-            <div class="ti-data">
-              <span class="ti-lbl">Flota Total</span>
-              <span class="ti-val">{{ servers.length }}</span>
-            </div>
-          </div>
-          
-          <div class="ticker-divider"></div>
-
-          <div class="ticker-item ks--green">
-            <div class="ti-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-            <div class="ti-data">
-              <span class="ti-lbl">Óptimos</span>
-              <span class="ti-val tc-ok">{{ stats.ok }}</span>
-            </div>
-          </div>
-
-          <div class="ticker-divider"></div>
-
-          <div class="ticker-item ks--amber">
-            <div class="ti-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-            <div class="ti-data">
-              <span class="ti-lbl">Advertencia</span>
-              <span class="ti-val" :class="stats.warn > 0 ? 'tc-warn' : ''">{{ stats.warn }}</span>
-            </div>
-          </div>
-
-          <div class="ticker-divider"></div>
-
-          <div class="ticker-item ks--red" :class="{ 'ti-alert': stats.crit > 0 }">
-            <div class="ti-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-            <div class="ti-data">
-              <span class="ti-lbl">Críticos</span>
-              <span class="ti-val" :class="stats.crit > 0 ? 'tc-crit' : ''">{{ stats.crit }}</span>
-            </div>
-          </div>
-
-          <div class="ticker-divider"></div>
-
-          <div class="ticker-item ks--gray">
-            <div class="ti-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></div>
-            <div class="ti-data">
-              <span class="ti-lbl">Desconectados</span>
-              <span class="ti-val">{{ stats.off }}</span>
-            </div>
-          </div>
+    <!-- ── KPI Bar ── -->
+    <section class="kpi-bar" v-if="servers.length > 0">
+      <!-- Donut ring -->
+      <div class="kpi-donut-wrap">
+        <Doughnut :data="chartData" :options="chartOptions" />
+        <div class="kpi-donut-center">
+          <span class="kdc-pct">{{ healthPct }}<small>%</small></span>
+          <span class="kdc-lbl">OK</span>
         </div>
       </div>
+
+      <div class="kpi-divider"></div>
+
+      <!-- Stats -->
+      <div class="kpi-stats">
+        <div class="kpi-stat">
+          <span class="ks-val ks--total">{{ servers.length }}</span>
+          <span class="ks-lbl">Flota total</span>
+        </div>
+        <div class="kpi-stat">
+          <span class="ks-val ks--ok">{{ stats.ok }}</span>
+          <span class="ks-lbl">Óptimos</span>
+        </div>
+        <div class="kpi-stat">
+          <span class="ks-val ks--warn" :class="{ 'ks-blink': stats.warn > 0 }">{{ stats.warn }}</span>
+          <span class="ks-lbl">Advertencia</span>
+        </div>
+        <div class="kpi-stat">
+          <span class="ks-val ks--crit" :class="{ 'ks-blink': stats.crit > 0 }">{{ stats.crit }}</span>
+          <span class="ks-lbl">Críticos</span>
+        </div>
+        <div class="kpi-stat">
+          <span class="ks-val ks--off">{{ stats.off }}</span>
+          <span class="ks-lbl">Offline</span>
+        </div>
+      </div>
+
+      <div class="kpi-divider"></div>
+
+      <!-- Fleet health bar -->
+      <div class="kpi-health-col">
+        <div class="khc-label">Estado de la flota</div>
+        <div class="health-bar-track">
+          <div class="health-bar-seg hbs--ok"   :style="{ width: pct(stats.ok)   + '%' }" :title="`${stats.ok} óptimos`"></div>
+          <div class="health-bar-seg hbs--warn"  :style="{ width: pct(stats.warn) + '%' }" :title="`${stats.warn} advertencias`"></div>
+          <div class="health-bar-seg hbs--crit"  :style="{ width: pct(stats.crit) + '%' }" :title="`${stats.crit} críticos`"></div>
+          <div class="health-bar-seg hbs--off"   :style="{ width: pct(stats.off)  + '%' }" :title="`${stats.off} offline`"></div>
+        </div>
+        <div class="health-bar-legend">
+          <span class="hbl-item"><span class="hbl-dot hbl--ok"></span>OK</span>
+          <span class="hbl-item"><span class="hbl-dot hbl--warn"></span>Warn</span>
+          <span class="hbl-item"><span class="hbl-dot hbl--crit"></span>Crit</span>
+          <span class="hbl-item"><span class="hbl-dot hbl--off"></span>Off</span>
+        </div>
+      </div>
+
+
     </section>
 
-    <!-- ── Filter / Search bar ────────────────────────────── -->
+    <!-- ── Filter / Search bar ── -->
     <div class="filter-bar" v-if="servers.length > 0">
       <div class="search-wrap">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input v-model="searchQ" class="search-input" placeholder="Buscar servidor…" />
+        <input v-model="searchQ" class="search-input" placeholder="Buscar por nombre o IP…" />
+        <button class="search-clear" v-if="searchQ" @click="searchQ = ''">×</button>
       </div>
+
       <div class="filter-chips">
         <button
           v-for="f in filters" :key="f.key"
-          class="fchip"
-          :class="{ active: activeFilter === f.key, [`fchip--${f.cls}`]: activeFilter === f.key }"
+          class="fchip" :class="{ active: activeFilter === f.key, [`fchip--${f.cls}`]: activeFilter === f.key }"
           @click="activeFilter = activeFilter === f.key ? 'all' : f.key"
         >
           <span class="fchip-dot" :class="`fd--${f.cls}`"></span>
@@ -148,41 +152,64 @@
           <span class="fchip-count">{{ f.count }}</span>
         </button>
       </div>
+
+      <!-- Sort -->
+      <div class="sort-wrap">
+        <select v-model="sortBy" class="sort-select">
+          <option value="name">Nombre A–Z</option>
+          <option value="status">Estado</option>
+          <option value="temp">Temperatura</option>
+          <option value="watts">Consumo</option>
+        </select>
+      </div>
+
+      <!-- Grid/List toggle -->
       <div class="grid-toggle">
-        <button class="gt-btn" :class="{ active: gridMode === 'grid' }" @click="gridMode = 'grid'" title="Vista cuadrícula">
+        <button class="gt-btn" :class="{ active: gridMode === 'grid' }" @click="gridMode = 'grid'" title="Cuadrícula">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
             <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
           </svg>
         </button>
-        <button class="gt-btn" :class="{ active: gridMode === 'list' }" @click="gridMode = 'list'" title="Vista lista">
+        <button class="gt-btn" :class="{ active: gridMode === 'list' }" @click="gridMode = 'list'" title="Lista">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
             <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
             <line x1="8" y1="18" x2="21" y2="18"/>
-            <circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/>
+            <circle cx="3" cy="6" r="1" fill="currentColor"/>
+            <circle cx="3" cy="12" r="1" fill="currentColor"/>
+            <circle cx="3" cy="18" r="1" fill="currentColor"/>
           </svg>
         </button>
       </div>
+
+      <span class="result-count" v-if="searchQ || activeFilter !== 'all'">
+        {{ filteredServers.length }} de {{ servers.length }}
+      </span>
     </div>
 
-    <!-- ── Empty State ────────────────────────────────────── -->
+    <!-- ── Empty State ── -->
     <div class="empty-state" v-if="!loading && servers.length === 0">
-      <div class="empty-glow"></div>
       <div class="empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
-          <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
-          <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="36" height="36">
+          <rect x="2" y="2" width="20" height="8" rx="2"/>
+          <rect x="2" y="14" width="20" height="8" rx="2"/>
+          <line x1="6" y1="6" x2="6.01" y2="6" stroke-width="3"/>
+          <line x1="6" y1="18" x2="6.01" y2="18" stroke-width="3"/>
         </svg>
       </div>
       <div class="empty-title">Sin infraestructura monitoreada</div>
-      <div class="empty-sub">Conecta tus primeros servidores HPE iLO 5 para comenzar.</div>
-      <button class="btn btn--primary btn--lg" @click="showAdd = true">+ Añadir Servidor</button>
+      <div class="empty-sub">Conecta tus primeros servidores HPE iLO 5 para comenzar a monitorear en tiempo real.</div>
+      <button class="btn-primary" @click="showAdd = true">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Añadir primer servidor
+      </button>
     </div>
 
-    <!-- ── Server Grid ────────────────────────────────────── -->
+    <!-- ── Server Grid ── -->
     <main class="fleet-grid" :class="{ 'fleet-list': gridMode === 'list' }" v-else>
       <div class="no-results" v-if="filteredServers.length === 0">
-        Sin resultados para "{{ searchQ }}"
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Sin resultados para <strong>"{{ searchQ }}"</strong>
       </div>
       <ServerCard
         v-for="srv in filteredServers"
@@ -196,7 +223,7 @@
       />
     </main>
 
-    <!-- ── Add Modal ──────────────────────────────────────── -->
+    <!-- ── Add Modal ── -->
     <AddServerModal v-if="showAdd" @close="showAdd = false" @added="onServerAdded" />
   </div>
 </template>
@@ -212,21 +239,20 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
-const props = defineProps({
-  refreshCount: Number
-})
+const props = defineProps({ refreshCount: Number })
 defineEmits(['open-detail', 'open-reports'])
 
 const { getServers } = useIlo()
-const servers    = ref([])
-const cardRefs   = ref({})
-const showAdd    = ref(false)
-const lastRefresh= ref('')
-const loading    = ref(true)
-const statusMap  = ref({})
-const searchQ    = ref('')
-const gridMode   = ref('grid')
+const servers      = ref([])
+const cardRefs     = ref({})
+const showAdd      = ref(false)
+const lastRefresh  = ref('')
+const loading      = ref(true)
+const statusMap    = ref({})
+const searchQ      = ref('')
+const gridMode     = ref('grid')
 const activeFilter = ref('all')
+const sortBy       = ref('name')
 
 let cdTimer = null
 const countdownSec = ref(REFRESH_INTERVAL_SEC)
@@ -235,47 +261,68 @@ const countdownPct = computed(() => {
   const t = REFRESH_INTERVAL_SEC
   return ((t - countdownSec.value) / t) * 100
 })
-const countdownMin = computed(() => {
-  return `${countdownSec.value}s`
-})
 
 const stats = computed(() => {
-  const s = { ok: 0, warn: 0, crit: 0, off: 0, unknown: 0 }
+  const s = { ok: 0, warn: 0, crit: 0, off: 0 }
   servers.value.forEach(srv => {
     const st = statusMap.value[srv.id]
-    if      (st === 'ok')      s.ok++
-    else if (st === 'warn')    s.warn++
-    else if (st === 'crit')    s.crit++
-    else if (st === 'off')     s.off++
-    else                       s.unknown++
+    if      (st === 'ok')   s.ok++
+    else if (st === 'warn') s.warn++
+    else if (st === 'crit') s.crit++
+    else                    s.off++
   })
   return s
 })
 
-const overallCls = computed(() => {
-  if (stats.value.crit > 0) return 'nc--crit'
-  if (stats.value.warn > 0) return 'nc--warn'
-  return 'nc--ok'
+const healthPct = computed(() => {
+  if (!servers.value.length) return 0
+  return Math.round((stats.value.ok / servers.value.length) * 100)
 })
 
+
 const filters = computed(() => [
-  { key: 'ok',   label: 'Óptimos',      cls: 'green', count: stats.value.ok },
-  { key: 'warn', label: 'Advertencia',  cls: 'amber', count: stats.value.warn },
-  { key: 'crit', label: 'Críticos',     cls: 'red',   count: stats.value.crit },
-  { key: 'off',  label: 'Offline',      cls: 'gray',  count: stats.value.off },
+  { key: 'ok',   label: 'Óptimos',     cls: 'green', count: stats.value.ok },
+  { key: 'warn', label: 'Advertencia', cls: 'amber', count: stats.value.warn },
+  { key: 'crit', label: 'Críticos',    cls: 'red',   count: stats.value.crit },
+  { key: 'off',  label: 'Offline',     cls: 'gray',  count: stats.value.off },
 ])
 
+const statusOrder = { crit: 0, warn: 1, ok: 2, off: 3 }
+
 const filteredServers = computed(() => {
-  let list = servers.value
+  let list = [...servers.value]
+
+  // Filter by status
   if (activeFilter.value !== 'all') {
     list = list.filter(srv => statusMap.value[srv.id] === activeFilter.value)
   }
+
+  // Filter by search
   if (searchQ.value.trim()) {
     const q = searchQ.value.toLowerCase()
     list = list.filter(srv =>
       srv.label.toLowerCase().includes(q) || srv.host.toLowerCase().includes(q)
     )
   }
+
+  // Sort
+  list.sort((a, b) => {
+    if (sortBy.value === 'status') {
+      return (statusOrder[statusMap.value[a.id]] ?? 4) - (statusOrder[statusMap.value[b.id]] ?? 4)
+    }
+    if (sortBy.value === 'temp') {
+      const ta = metricsMap.value[a.id]?.temp ?? -1
+      const tb = metricsMap.value[b.id]?.temp ?? -1
+      return tb - ta
+    }
+    if (sortBy.value === 'watts') {
+      const wa = metricsMap.value[a.id]?.watts ?? -1
+      const wb = metricsMap.value[b.id]?.watts ?? -1
+      return wb - wa
+    }
+    return a.label.localeCompare(b.label) // name
+  })
+
   return list
 })
 
@@ -285,26 +332,23 @@ function pct(n) {
 
 const chartData = computed(() => {
   const { ok, warn, crit, off } = stats.value
-  if (ok === 0 && warn === 0 && crit === 0 && off === 0) {
-    return { labels: ['Escaneando…'], datasets: [{ data: [1], backgroundColor: ['rgba(255,255,255,0.04)'], borderWidth: 0 }] }
+  if (!ok && !warn && !crit && !off) {
+    return { labels: ['—'], datasets: [{ data: [1], backgroundColor: ['#e8e4df'], borderWidth: 0 }] }
   }
   return {
     labels: ['Óptimos', 'Advertencia', 'Críticos', 'Offline'],
     datasets: [{
       data: [ok, warn, crit, off],
-      backgroundColor: ['#2EB253', '#F5A623', '#E03535', '#475569'],
-      hoverBackgroundColor: ['#38d467', '#ffc13d', '#f54545', '#64748b'],
-      borderWidth: 0, hoverOffset: 8,
+      backgroundColor: ['#1a8a7a', '#e67e22', '#c0392b', '#b0aba3'],
+      hoverBackgroundColor: ['#1da898', '#f39c12', '#e74c3c', '#9a9490'],
+      borderWidth: 0, hoverOffset: 6,
     }]
   }
 })
 
 const chartOptions = {
-  responsive: true, maintainAspectRatio: false, cutout: '78%',
-  plugins: {
-    legend: { display: false },
-    tooltip: { enabled: true }
-  }
+  responsive: true, maintainAspectRatio: false, cutout: '74%',
+  plugins: { legend: { display: false }, tooltip: { enabled: true } }
 }
 
 async function loadServers() {
@@ -317,7 +361,9 @@ async function loadServers() {
 function onServerAdded(srv) { showAdd.value = false; servers.value.push(srv) }
 function onServerDeleted(id) {
   servers.value = servers.value.filter(s => s.id !== id)
-  delete statusMap.value[id]; delete cardRefs.value[id]
+  delete statusMap.value[id]
+  delete metricsMap.value[id]
+  delete cardRefs.value[id]
 }
 function updateStatus(id, status) { statusMap.value[id] = status }
 function reloadAll() {
@@ -332,218 +378,143 @@ onMounted(() => {
   cdTimer = setInterval(() => { countdownSec.value = Math.max(0, countdownSec.value - 1) }, 1000)
 })
 
-// Auto-reload cuando llega una señal de App.vue (via SocketIO)
-watch(() => props.refreshCount, () => {
-  console.log('[FleetView] Auto-refresh trigger recibido')
-  reloadAll()
-})
-
+watch(() => props.refreshCount, () => { reloadAll() })
 onUnmounted(() => clearInterval(cdTimer))
 </script>
 
 <style scoped>
-/* ── Base ── */
-.fleet-page { display: flex; flex-direction: column; min-height: 100vh; background: var(--page); }
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-/* ── Topbar ── */
-.topbar {
-  background: rgba(255, 255, 255, 0.85); border-bottom: 1px solid var(--border);
-  padding: 0 28px; height: 64px;
-  display: flex; align-items: center; justify-content: space-between;
-  position: sticky; top: 0; z-index: 100; backdrop-filter: blur(20px);
-  gap: 16px;
+/* ── BASE ── */
+.fleet-page { display:flex; flex-direction:column; min-height:100vh; background:#f5f2ee; font-family:'Sora',-apple-system,sans-serif; color:#1a1714; }
+
+/* ── TOPBAR ── */
+.topbar { background:#faf8f5; border-bottom:1.5px solid #ddd8d0; padding:0 32px; height:60px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; gap:16px; }
+.topbar-brand { display:flex; align-items:center; gap:14px; }
+.brand-icon { width:38px; height:38px; border-radius:10px; background:#e6f5f2; border:1.5px solid #b8e4dc; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.brand-icon svg { width:18px; height:18px; stroke:#1a8a7a; }
+.brand-title { font-size:15px; font-weight:800; color:#1a1714; letter-spacing:-.03em; }
+.brand-sub   { font-size:10px; color:#9a9490; margin-top:1px; font-weight:500; }
+.brand-count { color:#1a8a7a; font-weight:700; }
+
+.topbar-right { display:flex; align-items:center; gap:8px; }
+.live-pill { display:flex; align-items:center; gap:5px; background:#e6f5ee; border:1px solid #b8e4d8; padding:3px 9px; border-radius:20px; font-size:9px; font-weight:800; color:#0f6e44; letter-spacing:.08em; }
+.live-dot { width:5px; height:5px; border-radius:50%; background:#1a8a7a; animation:pulse-dot 1.5s infinite; }
+@keyframes pulse-dot { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.4); opacity:.5; } }
+
+.countdown-pill { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:#6b6560; background:#f5f2ee; border:1px solid #ddd8d0; padding:4px 10px; border-radius:20px; }
+.last-refresh { font-size:10px; color:#9a9490; font-family:'IBM Plex Mono',monospace; }
+
+.btn-icon { display:flex; align-items:center; gap:6px; font-family:'Sora',sans-serif; font-size:12px; font-weight:600; padding:7px 13px; border-radius:8px; border:1.5px solid #ddd8d0; background:white; color:#6b6560; cursor:pointer; transition:all .15s; letter-spacing:.02em; }
+.btn-icon:hover { background:#f5f2ee; border-color:#b0aba3; color:#1a1714; }
+.btn-icon:disabled { opacity:.5; cursor:not-allowed; }
+.btn-primary { display:flex; align-items:center; gap:6px; font-family:'Sora',sans-serif; font-size:12px; font-weight:700; padding:7px 15px; border-radius:8px; background:#1a1714; color:#f5f2ee; border:none; cursor:pointer; transition:all .15s; letter-spacing:.02em; }
+.btn-primary:hover { background:#2d2925; }
+
+/* ── ALERTS ── */
+.alert-crit { display:flex; align-items:center; gap:10px; background:#fdecea; border-bottom:1.5px solid #f5c0c0; padding:10px 32px; font-size:12px; font-weight:600; color:#a32d2d; }
+.alert-warn { display:flex; align-items:center; gap:10px; background:#fef3e6; border-bottom:1.5px solid #f9d5a5; padding:10px 32px; font-size:12px; font-weight:600; color:#854f0b; }
+.alert-led { width:7px; height:7px; border-radius:50%; background:#c0392b; animation:blink 1s infinite; flex-shrink:0; }
+.alert-led--warn { background:#e67e22; animation:none; }
+
+/* ── KPI BAR ── */
+.kpi-bar {
+  display:flex; align-items:center; gap:0;
+  background:white; border-bottom:1.5px solid #ddd8d0;
+  padding:16px 32px; gap:28px;
 }
-.topbar-brand { display: flex; align-items: center; gap: 14px; }
-.brand-icon {
-  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
-  background: rgba(62,146,239,0.12); border: 1px solid rgba(62,146,239,0.25);
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 20px rgba(62,146,239,0.1);
-}
-.brand-icon svg { width: 20px; height: 20px; stroke: var(--blue-400); }
-.brand-title { font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
-.brand-sub   { font-size: 11px; color: var(--text-4); margin-top: 1px; }
-.brand-count { color: var(--blue-400); font-weight: 600; }
+.kpi-donut-wrap { position:relative; width:72px; height:72px; flex-shrink:0; }
+.kpi-donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+.kdc-pct { font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600; color:#1a1714; line-height:1; }
+.kdc-pct small { font-size:10px; color:#9a9490; }
+.kdc-lbl { font-size:8px; font-weight:700; color:#9a9490; text-transform:uppercase; letter-spacing:.08em; margin-top:2px; }
 
-.topbar-right { display: flex; align-items: center; gap: 10px; }
-.countdown-pill {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600; color: var(--text-3);
-  background: rgba(0,0,0,0.05); border: 1px solid var(--border);
-  padding: 4px 10px 4px 6px; border-radius: 999px;
-}
-.cd-ring-wrap { width: 20px; height: 20px; }
-.cd-ring { width: 100%; height: 100%; }
-.cd-bg   { fill: none; stroke: rgba(0,0,0,0.08); stroke-width: 2.5; }
-.cd-fill { fill: none; stroke: var(--blue-400); stroke-width: 2.5; stroke-linecap: round; }
-.last-refresh { font-size: 10px; color: var(--text-4); font-family: 'JetBrains Mono'; }
+.kpi-divider { width:1px; height:52px; background:#e8e4df; flex-shrink:0; }
 
-/* LIVE dot */
-.live-pill {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(46,178,83,0.1); border: 1px solid rgba(46,178,83,0.2);
-  padding: 4px 10px; border-radius: 999px;
-  font-size: 9px; font-weight: 800; color: var(--green-600);
-  letter-spacing: 0.05em;
-}
-.live-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--green-600);
-  box-shadow: 0 0 8px var(--green-600);
-  animation: heart-beat 1.5s infinite;
-}
-@keyframes heart-beat { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.5; } }
+.kpi-stats { display:flex; align-items:center; gap:24px; }
+.kpi-stat  { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.ks-val    { font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; line-height:1; }
+.ks-lbl    { font-size:9px; font-weight:700; color:#9a9490; text-transform:uppercase; letter-spacing:.08em; }
+.ks--total { color:#1a1714; }
+.ks--ok    { color:#1a8a7a; }
+.ks--warn  { color:#e67e22; }
+.ks--crit  { color:#c0392b; }
+.ks--off   { color:#b0aba3; }
+.ks-blink  { animation:blink 1.2s infinite; }
 
-/* ── Hero ── */
-.hero-section { padding: 16px 28px 0px; }
+.kpi-health-col { flex:1; min-width:180px; }
+.khc-label { font-size:9px; font-weight:700; color:#9a9490; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+.health-bar-track { height:8px; border-radius:4px; background:#f5f2ee; overflow:hidden; display:flex; border:1px solid #e8e4df; }
+.health-bar-seg { height:100%; transition:width .6s ease; }
+.hbs--ok   { background:#1a8a7a; }
+.hbs--warn { background:#e67e22; }
+.hbs--crit { background:#c0392b; }
+.hbs--off  { background:#d4d0cb; }
+.health-bar-legend { display:flex; gap:12px; margin-top:7px; }
+.hbl-item  { display:flex; align-items:center; gap:4px; font-size:9px; font-weight:600; color:#9a9490; }
+.hbl-dot   { width:6px; height:6px; border-radius:50%; }
+.hbl--ok   { background:#1a8a7a; }
+.hbl--warn { background:#e67e22; }
+.hbl--crit { background:#c0392b; }
+.hbl--off  { background:#d4d0cb; }
 
-/* ── Professional Monitoring Ticker (Improved) ── */
-.kpi-ticker {
-  display: flex; align-items: center; gap: 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px 32px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.05);
-  backdrop-filter: blur(20px);
-}
 
-.kpi-ring-container { position: relative; width: 42px; height: 42px; flex-shrink: 0; }
-.kpi-ring-inner {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
-}
-.kr-dot { width: 8px; height: 8px; border-radius: 50%; }
-.kr-dot.nc--ok { background: var(--green-600); box-shadow: 0 0 15px var(--green-600); }
-.kr-dot.nc--warn { background: var(--amber-600); box-shadow: 0 0 15px var(--amber-600); }
-.kr-dot.nc--crit { background: var(--red-600); box-shadow: 0 0 15px var(--red-600); }
 
-.ticker-items { display: flex; align-items: center; flex: 1; justify-content: space-between; }
-.ticker-divider { width: 1px; height: 32px; background: var(--border); margin: 0 15px; }
+/* ── FILTER BAR ── */
+.filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 32px; border-bottom:1px solid #e8e4df; background:#faf8f5; }
+.search-wrap { position:relative; }
+.search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); pointer-events:none; color:#9a9490; }
+.search-input { background:white; border:1.5px solid #ddd8d0; border-radius:8px; padding:7px 32px 7px 32px; font-size:12px; font-family:'Sora',sans-serif; color:#1a1714; outline:none; width:210px; transition:border-color .2s,width .25s; }
+.search-input::placeholder { color:#b0aba3; }
+.search-input:focus { border-color:#1a8a7a; width:260px; }
+.search-clear { position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:#9a9490; cursor:pointer; font-size:16px; line-height:1; padding:0; }
+.search-clear:hover { color:#1a1714; }
 
-.ticker-item { display: flex; align-items: center; gap: 14px; }
-.ti-icon { width: 22px; height: 22px; transition: transform 0.3s; }
-.ti-icon svg { width: 100%; height: 100%; }
+.filter-chips { display:flex; gap:5px; }
+.fchip { display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; font-size:11px; font-weight:600; background:white; border:1.5px solid #ddd8d0; color:#6b6560; cursor:pointer; transition:all .15s; font-family:'Sora',sans-serif; }
+.fchip:hover { border-color:#b0aba3; color:#1a1714; }
+.fchip.fchip--green { background:#e6f5f2; border-color:#b8e4dc; color:#0f6e44; }
+.fchip.fchip--amber { background:#fef3e6; border-color:#f9d5a5; color:#854f0b; }
+.fchip.fchip--red   { background:#fdecea; border-color:#f5c0c0; color:#a32d2d; }
+.fchip.fchip--gray  { background:#f5f2ee; border-color:#d4d0cb; color:#6b6560; }
+.fchip-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.fd--green { background:#1a8a7a; }
+.fd--amber { background:#e67e22; }
+.fd--red   { background:#c0392b; }
+.fd--gray  { background:#b0aba3; }
+.fchip-count { background:rgba(0,0,0,.07); padding:1px 6px; border-radius:20px; font-size:9px; }
 
-.ti-data { display: flex; flex-direction: column; gap: 2px; }
-.ti-lbl { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; line-height: 1; }
-.ti-val { font-size: 24px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--text); line-height: 1; }
+.sort-wrap { }
+.sort-select { font-family:'Sora',sans-serif; font-size:11px; font-weight:600; color:#6b6560; background:white; border:1.5px solid #ddd8d0; border-radius:8px; padding:6px 10px; cursor:pointer; outline:none; transition:border-color .15s; }
+.sort-select:focus { border-color:#1a8a7a; }
 
-/* Status specific colors for Icons and Values */
-.ks--blue  .ti-icon { color: var(--blue-400); }
-.ks--blue  .ti-val  { color: var(--blue-600); }
+.grid-toggle { display:flex; gap:2px; background:white; border:1.5px solid #ddd8d0; border-radius:8px; padding:3px; margin-left:auto; }
+.gt-btn { width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:5px; border:none; background:transparent; color:#9a9490; cursor:pointer; transition:all .15s; }
+.gt-btn.active { background:#e6f5f2; color:#1a8a7a; }
+.gt-btn:hover:not(.active) { background:#f5f2ee; color:#1a1714; }
 
-.ks--green .ti-icon { color: var(--green-600); }
-.ks--green .ti-val  { color: var(--green-600); }
+.result-count { font-size:11px; font-weight:600; color:#9a9490; font-family:'IBM Plex Mono',monospace; }
 
-.ks--amber .ti-icon { color: var(--amber-600); }
-.ks--amber .ti-val  { color: var(--amber-600); text-shadow: 0 0 20px rgba(245,166,35,0.1); }
+/* ── EMPTY STATE ── */
+.empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:80px 24px; text-align:center; }
+.empty-icon { width:72px; height:72px; border-radius:18px; background:#e6f5f2; border:1.5px solid #b8e4dc; display:flex; align-items:center; justify-content:center; color:#1a8a7a; }
+.empty-title { font-size:20px; font-weight:800; color:#1a1714; letter-spacing:-.02em; }
+.empty-sub   { font-size:13px; color:#9a9490; max-width:320px; line-height:1.6; }
 
-.ks--red   .ti-icon { color: var(--red-600); }
-.ks--red   .ti-val  { color: var(--red-600); text-shadow: 0 0 20px rgba(224,53,53,0.2); }
+/* ── FLEET GRID ── */ 
+.fleet-grid { flex:1; padding:24px 32px; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; align-items:start; }
+.fleet-list { grid-template-columns:1fr; gap:8px; }
+.no-results { grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:60px; color:#9a9490; font-size:13px; }
+.no-results strong { color:#1a1714; }
 
-.ks--gray  .ti-icon { color: #64748b; }
-.ks--gray  .ti-val  { color: #94a3b8; }
+/* ── ANIMATIONS ── */
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.2; } }
+@keyframes spin   { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+.spin { display:inline-block; animation:spin .8s linear infinite; }
 
-.ti-alert .ti-icon { animation: ti-pulse 1.5s infinite; }
-@keyframes ti-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.6; } }
+/* ── RESPONSIVE ── */
 
-@media (max-width: 1024px) {
-  .ticker-items { flex-wrap: wrap; gap: 20px; }
-  .ticker-divider { display: none; }
-  .kpi-ticker { padding: 16px 20px; }
-}
-
-@media (max-width: 640px) {
-  .ti-lbl { display: none; }
-}
-
-/* ── Filter Bar ── */
-.filter-bar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 14px 28px; border-bottom: 1px solid var(--border-light);
-}
-.search-wrap { position: relative; }
-.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; stroke: var(--text-4); pointer-events: none; }
-.search-input {
-  background: rgba(0,0,0,0.03); border: 1px solid var(--border); border-radius: 8px;
-  padding: 7px 12px 7px 32px; font-size: 13px; color: var(--text-2); outline: none;
-  width: 220px; transition: border-color .2s, width .3s; font-family: inherit;
-}
-.search-input::placeholder { color: var(--text-4); }
-.search-input:focus { border-color: rgba(62,146,239,0.4); background: rgba(62,146,239,0.04); width: 280px; }
-
-.filter-chips { display: flex; gap: 6px; }
-.fchip {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 600;
-  background: rgba(0,0,0,0.03); border: 1px solid var(--border); color: var(--text-3);
-  cursor: pointer; transition: all .2s;
-}
-.fchip:hover { background: rgba(0,0,0,0.06); color: var(--text-2); }
-.fchip.active { color: var(--text); }
-.fchip.fchip--green { background: rgba(46,178,83,0.12);  border-color: rgba(46,178,83,0.3);  color: var(--green-600); }
-.fchip.fchip--amber { background: rgba(245,166,35,0.12); border-color: rgba(245,166,35,0.3); color: var(--amber-600); }
-.fchip.fchip--red   { background: rgba(224,53,53,0.12);  border-color: rgba(224,53,53,0.3);  color: var(--red-600); }
-.fchip.fchip--gray  { background: rgba(148,163,184,0.1); border-color: rgba(148,163,184,0.2);color: var(--gray-500); }
-.fchip-dot  { width: 6px; height: 6px; border-radius: 50%; }
-.fd--green  { background: var(--green-600); box-shadow: 0 0 4px var(--green-600); }
-.fd--amber  { background: var(--amber-600); box-shadow: 0 0 4px var(--amber-600); }
-.fd--red    { background: var(--red-600);   box-shadow: 0 0 4px var(--red-600); }
-.fd--gray   { background: var(--gray-400); }
-.fchip-count { background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 999px; font-size: 10px; }
-
-.grid-toggle { display: flex; gap: 2px; margin-left: auto; background: rgba(0,0,0,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
-.gt-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 5px; border: none; background: transparent; color: var(--text-4); cursor: pointer; transition: all .2s; }
-.gt-btn.active { background: rgba(62,146,239,0.15); color: var(--blue-400); }
-.gt-btn:hover:not(.active) { background: rgba(0,0,0,0.05); color: var(--text-2); }
-
-/* ── Server Grid ── */
-.fleet-grid {
-  flex: 1; padding: 24px 28px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 18px; align-items: start;
-}
-.fleet-list {
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-.no-results { grid-column: 1/-1; text-align: center; color: var(--text-4); padding: 60px; font-size: 14px; }
-
-/* ── Empty State ── */
-.empty-state {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 16px; padding: 80px 24px; text-align: center; position: relative;
-}
-.empty-glow { position: absolute; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba(62,146,239,0.05) 0%, transparent 70%); pointer-events: none; }
-.empty-icon {
-  width: 80px; height: 80px; border-radius: 22px;
-  background: rgba(62,146,239,0.08); border: 1px solid rgba(62,146,239,0.2);
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 40px rgba(62,146,239,0.12);
-}
-.empty-icon svg { width: 36px; height: 36px; stroke: var(--blue-400); }
-.empty-title { font-size: 22px; font-weight: 700; color: var(--text); }
-.empty-sub   { font-size: 14px; color: var(--text-3); max-width: 340px; line-height: 1.5; }
-.btn--lg { padding: 10px 24px; font-size: 14px; }
-
-/* ── Responsive ── */
-@media (max-width: 1200px) { .kpi-stats { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 1024px) {
-  .kpi-row { grid-template-columns: 1fr; }
-  .kpi-chart-wrap { height: 160px; }
-}
-@media (max-width: 768px)  {
-  .kpi-stats { grid-template-columns: repeat(2, 1fr); }
-  .fleet-grid { padding: 16px; gap: 12px; }
-  .hero-section { padding: 16px 16px 0; }
-  .filter-bar { padding: 12px 16px; }
-}
-@media (max-width: 640px)  {
-  .topbar { padding: 0 16px; height: auto; padding-top: 12px; padding-bottom: 12px; flex-direction: column; align-items: flex-start; gap: 10px; }
-  .topbar-right { align-self: stretch; justify-content: space-between; }
-  .fleet-grid { grid-template-columns: 1fr; }
-  .kpi-stats { grid-template-columns: 1fr 1fr; }
-  .filter-chips { display: none; }
-}
+@media (max-width:900px)  { .kpi-health-col { display:none; } .kpi-bar { gap:20px; } }
+@media (max-width:768px)  { .fleet-grid { padding:16px; gap:12px; } .filter-bar { padding:10px 16px; } .kpi-bar { padding:12px 16px; } .topbar { padding:0 16px; } .alert-crit,.alert-warn { padding:10px 16px; } }
+@media (max-width:640px)  { .topbar { height:auto; padding:12px 16px; flex-wrap:wrap; } .kpi-stats { gap:16px; } .fleet-grid { grid-template-columns:1fr; } .filter-chips { display:none; } }
 </style>

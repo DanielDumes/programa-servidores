@@ -49,7 +49,7 @@ onMounted(() => {
     setTimeout(() => removeToast(id), 10000)
     
     // Forzar actualización de la UI si es un evento de salud o conexión
-    if (['ConnectionLoss', 'HealthDegradation', 'HealthRecovery', 'PowerChanged'].includes(alert.type)) {
+    if (['ConnectionLoss', 'HealthDegradation', 'HealthRecovery', 'PowerStateChanged'].includes(alert.type)) {
       refreshTrigger.value++
     }
   })
