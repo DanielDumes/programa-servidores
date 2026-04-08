@@ -375,8 +375,9 @@
       <div class="metrics-grid" v-else-if="metricPoints.length">
         <div class="chart-card">
           <div class="chart-header">
-            <div class="chart-title">🌡 Histórico de Temperatura (Max Sensor)</div>
-            <div class="chart-sub">Promedio de temperatura máxima detectada por hora</div>
+            <div class="chart-title">🌡 Histórico de Temperatura (01-Inlet Ambient)</div>
+            <div class="chart-sub">Promedio de temperatura ambiente detectada por hora</div>
+
           </div>
           <div class="chart-container">
             <Line :data="tempChartData" :options="chartOptions" />
@@ -419,7 +420,8 @@
                  <div class="info-grid">
                     <div class="info-row"><span class="info-lbl">Salud</span> <span :class="healthCls(inspectSnap.health)">{{ healthLabel(inspectSnap.health) }}</span></div>
                     <div class="info-row"><span class="info-lbl">Energía</span> <span :class="inspectSnap.power_state === 'On' ? 'tc-ok' : 'tc-off'">{{ inspectSnap.power_state }}</span></div>
-                    <div class="info-row"><span class="info-lbl">Max Temp</span> <span :class="tempCls(inspectSnap.max_temp_c)">{{ inspectSnap.max_temp_c }}°C</span></div>
+                    <div class="info-row"><span class="info-lbl">Temp Amb</span> <span :class="tempCls(inspectSnap.max_temp_c)">{{ inspectSnap.max_temp_c }}°C</span></div>
+
                     <div class="info-row"><span class="info-lbl">Consumo</span> <span>{{ inspectSnap.consumed_watts }}W</span></div>
                  </div>
               </div>
@@ -747,7 +749,8 @@ const tempChartData = computed(() => ({
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false
   })),
   datasets: [{
-    label: 'Temp. Máxima (°C)',
+    label: 'Temp. Ambiente (°C)',
+
     data: metricPoints.value.map(p => p.avg_temp),
     borderColor: '#E03535',
     backgroundColor: 'rgba(224, 53, 53, 0.1)',
