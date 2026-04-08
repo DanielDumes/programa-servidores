@@ -69,8 +69,9 @@
         v-for="f in data.fans" :key="f.name"
         class="fan-dot"
         :class="f.health === 'OK' ? 'fd--ok' : 'fd--warn'"
-        :title="`${f.name}: ${f.rpm ?? '?'} RPM`"
+        :title="`${f.name}: ${f.rpm != null ? f.rpm + ' RPM' : 'N/A'}`"
       ></div>
+
     </div>
 
     <!-- Footer -->
